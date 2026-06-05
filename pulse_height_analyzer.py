@@ -228,8 +228,8 @@ class AcqWorker:
                     buffer_size=buf,
                     trigger_level_v=trig,
                     trigger_condition=slope,
-                    auto_timeout_s=0.5,
-                    timeout_s=3.0,
+                    auto_timeout_s=0.0,
+                    timeout_s=3.0,#this should be pretty long...
                 )
                 if invert:
                     data = -data
