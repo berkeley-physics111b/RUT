@@ -298,7 +298,7 @@ class ScopeTab(tk.Frame):
         self._ax.set_facecolor(PANEL)
         self._ax.set_xlabel("Time (μs)", color=FG)
         self._ax.set_ylabel("Voltage (V)", color=FG)
-        self._ax.set_title("Scope – Recent Pulses", color=ACCENT)
+        self._ax.set_title("Scope - Recent Pulses", color=ACCENT)
         self._ax.grid(True)
 
         self._canvas = FigureCanvasTkAgg(self._fig, master=right)
@@ -365,7 +365,7 @@ class ScopeTab(tk.Frame):
     def _add_trace(self, data: np.ndarray):
         p  = self._params
         fs = p["sample_rate"]
-        t  = np.linspace(0, len(data) / fs * 1e6, len(data))   # μs
+        t  = np.linspace(-len(data) / (2 * fs) * 1e6, len(data) / (2 * fs) * 1e6, len(data))  # μs centered on zero
         self._traces.append((t, data))
         if len(self._traces) > self.MAX_TRACES:
             self._traces.pop(0)
@@ -374,11 +374,17 @@ class ScopeTab(tk.Frame):
         self._status.set(f"Scope: {n} trace{'s' if n != 1 else ''} shown")
 
     def _redraw(self, traces):
+        p = self._params
+        y_range = p["y_range"]
+        time_base = p["time_base_us"]
+        DIVS = 5
         self._ax.cla()
         self._ax.set_facecolor(PANEL)
         self._ax.set_xlabel("Time (μs)", color=FG)
         self._ax.set_ylabel("Voltage (V)", color=FG)
-        self._ax.set_title("Scope – Recent Pulses", color=ACCENT)
+        self._ax.set_xlim(-time_base*DIVS, time_base*DIVS)
+        self._ax.set_ylim(-y_range*DIVS, y_range*DIVS)
+        self._ax.set_title("Scope - Recent Pulses", color=ACCENT)
         self._ax.grid(True)
 
         if traces:
@@ -667,21 +673,28 @@ class HistogramTab(tk.Frame):
         self.after(80, self._poll)
 
     def _schedule_pulse_redraw(self):
-        """Throttled waveform refresh — fires every 500 ms while running."""
+        """Throttled waveform refresh - every 500 ms while running."""
         self._redraw_pulse()
         if self._running:
             self.after(500, self._schedule_pulse_redraw)
 
     def _redraw_pulse(self):
+        p = self.scope_settings.get_params()
+        y_range = p["y_range"]
+        time_base = p["time_base_us"]
+        DIVS = 5
         self._pax.cla()
         self._pax.set_facecolor(PANEL)
         self._pax.set_xlabel("Time (μs)", color=FG)
         self._pax.set_ylabel("V", color=FG)
+        self._pax.set_xlim(-time_base * DIVS, time_base * DIVS)
+        self._pax.set_ylim(-y_range * DIVS, y_range * DIVS)
         self._pax.set_title("Most Recent Pulse", color=ACCENT)
         self._pax.grid(True)
         if self._last_waveform is not None and hasattr(self, "_params"):
             fs = self._params["sample_rate"]
-            t  = np.linspace(0, len(self._last_waveform) / fs * 1e6,
+            t  = np.linspace(-len(self._last_waveform) / (2 * fs) * 1e6, 
+                            len(self._last_waveform) / (2 * fs) * 1e6,
                              len(self._last_waveform))
             self._pax.plot(t, self._last_waveform, color=GREEN, lw=1.2)
             self._pax.axhline(self._params["trigger_level"], color=RED,
