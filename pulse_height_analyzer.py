@@ -572,7 +572,7 @@ class HistogramTab(tk.Frame):
     
     def _toggle_bias_monitor(self):
         state = "normal" if self.bias_monitor_on.get() else "disabled"
-        self._bcanvas.config(state=state)
+        self._bcanvas.itemconfig(state=state)
         
     # ── File browse ────────────────────────────────────────────────────────
 
