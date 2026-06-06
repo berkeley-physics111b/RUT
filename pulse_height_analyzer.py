@@ -717,6 +717,8 @@ class HistogramTab(tk.Frame):
         self._times.clear()
         self._count_var.set("Events: 0")
         self._redraw()
+        self._redraw_bias_monitor()
+        self._redraw_pulse()
 
     # ── Poll & draw ────────────────────────────────────────────────────────
 
@@ -736,7 +738,7 @@ class HistogramTab(tk.Frame):
             # Find peak
             ts = datetime.datetime.now()
             time_save = ts.isoformat(timespec="milliseconds")
-            time_plot = round((ts - self._start_time).microseconds / 1e6, 3) # seconds, but higher precision
+            time_plot = round((ts - self._start_time).total_seconds() / 1e6, 3) # seconds, but higher precision
             ch = self._params["channel"]
             trace = item[ch]
             if self._bm_on:
