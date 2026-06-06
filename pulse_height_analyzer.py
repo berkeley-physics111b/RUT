@@ -140,12 +140,12 @@ class ScopeSettingsPanel(tk.LabelFrame):
         self.probe_invert = tk.BooleanVar(value=False)
 
         rows = [
-            ("Channel (0-based):",   self.channel,      5),
-            ("Trigger Level (V):",   self.trig_level,   8),
-            ("Sample Freq (Hz):",    self.sample_freq,  12),
-            ("Y Range (V p-p):",     self.y_range,      8),
-            ("Vertical Offset (V):", self.y_offset,     8),
-            ("Time Base (μs):",      self.time_base_us, 8),
+            ("Pulse Channel (0-based):", self.channel,      5),
+            ("Trigger Level (V):",       self.trig_level,   8),
+            ("Sample Freq (Hz):",        self.sample_freq,  12),
+            ("Y Range (V p-p):",         self.y_range,      8),
+            ("Vertical Offset (V):",     self.y_offset,     8),
+            ("Time Base (μs):",          self.time_base_us, 8),
         ]
         for r, (label, var, width) in enumerate(rows):
             _lf(self, label, col=0, row=r)
@@ -223,16 +223,15 @@ class AcqWorker:
         while not self._stop.is_set():
             try:
                 data = self._ads.analog_in_capture(
-                    channel=ch,
+                    channels=[0,1],
+                    trigger_channel=ch,
                     sample_rate_hz=fs,
                     buffer_size=buf,
                     trigger_level_v=trig,
                     trigger_condition=slope,
                     auto_timeout_s=0.0,
-                    timeout_s=3.0,#this should be pretty long...
+                    timeout_s=3.0,#this should be pretty long...? caught below though
                 )
-                if invert:
-                    data = -data
                 self._q.put(data)
             except TimeoutError:
                 # No trigger – just retry
@@ -247,7 +246,6 @@ class AcqWorker:
 # ---------------------------------------------------------------------------
 
 class ScopeTab(tk.Frame):
-    MAX_TRACES = 5   # number of recent pulses to overlay
 
     def __init__(self, parent, status_var: tk.StringVar, **kw):
         super().__init__(parent, bg=BG, **kw)
@@ -272,6 +270,15 @@ class ScopeTab(tk.Frame):
 
         self.scope_settings = ScopeSettingsPanel(left)
         self.scope_settings.pack(fill="x", padx=4, pady=4)
+
+        trace_frm = tk.LabelFrame(left, text="Trace Viewer Settings",
+                                 bg=PANEL, fg=ACCENT, font=SANS_B)
+        trace_frm.pack(fill="x", padx=4, pady=4)
+        trace_frm.columnconfigure(1, weight=1)
+
+        self.pulses_display = tk.IntVar(value=5)
+        _lf(trace_frm, "Number of pulses to display", col=0, row=0)
+        _ef(trace_frm, self.pulses_display, col=1, row=0, width=5)
 
         ctrl = tk.Frame(left, bg=BG)
         ctrl.pack(fill="x", padx=4, pady=4)
@@ -320,6 +327,7 @@ class ScopeTab(tk.Frame):
             return
 
         self._params = self.scope_settings.get_params()
+        self._max_traces = self.pulses_display.get()
         self._q      = queue.Queue(maxsize=20)
         self._worker = AcqWorker(self._ads, self._params, self._q)
         self._worker.start()
@@ -362,12 +370,14 @@ class ScopeTab(tk.Frame):
             pass
         self.after(50, self._poll)
 
-    def _add_trace(self, data: np.ndarray):
+    def _add_trace(self, data: dict):
         p  = self._params
         fs = p["sample_rate"]
-        t  = np.linspace(-len(data) / (2 * fs) * 1e6, len(data) / (2 * fs) * 1e6, len(data))  # μs centered on zero
-        self._traces.append((t, data))
-        if len(self._traces) > self.MAX_TRACES:
+        ch = p["channel"]
+        trace = data[ch]
+        t  = np.linspace(-len(trace) / (2 * fs) * 1e6, len(trace) / (2 * fs) * 1e6, len(trace))  # μs centered on zero
+        self._traces.append((t, trace))
+        if len(self._traces) > self._max_traces:
             self._traces.pop(0)
         self._redraw(self._traces)
         n = len(self._traces)
@@ -421,8 +431,13 @@ class HistogramTab(tk.Frame):
         self._worker: AcqWorker | None = None
         self._ads:    WaveFormsADS | None = None
         self._q:      queue.Queue  = queue.Queue(maxsize=200)
+        self._start_time: datetime.datetime = None
         self._heights: list[float] = []
+        self._times:   list[float] = []
         self._last_waveform: np.ndarray | None = None
+        self._bias_monitor_mean: list[float] = []
+        self._bias_monitor_min: list[float] = []
+        self._bias_monitor_max: list[float] = []
         self._running = False
         self._csv_file = None
         self._csv_writer = None
@@ -461,6 +476,18 @@ class HistogramTab(tk.Frame):
         _lf(hist_frm, "V min:",     col=0, row=1); _ef(hist_frm, self.v_min,   col=1, row=1, width=8)
         _lf(hist_frm, "V max:",     col=0, row=2); _ef(hist_frm, self.v_max,   col=1, row=2, width=8)
 
+        # Bias monitor settings
+        bias_frm = tk.LabelFrame(left, text="Bias Monitor",
+                                 bg=PANEL, fg=ACCENT, font=SANS_B)
+        bias_frm.pack(fill="x", padx=4, pady=4)
+        bias_frm.columnconfigure(1, weight=1)
+
+        self.bias_monitor_on = tk.BooleanVar(value=False)
+        tk.Checkbutton(bias_frm, text="Bias Monitor On", variable=self.bias_monitor_on,
+                       command=self._toggle_bias_monitor, bg=PANEL, fg=FG, selectcolor=ENTRY_BG,
+                       activebackground=PANEL, font=SANS).grid(
+                        column=0, row=0, columnspan=2, sticky="w", padx=PADX, pady=PADY)
+
         # File settings
         file_frm = tk.LabelFrame(left, text="Data File",
                                  bg=PANEL, fg=ACCENT, font=SANS_B)
@@ -496,7 +523,7 @@ class HistogramTab(tk.Frame):
         tk.Label(left, textvariable=self._count_var,
                  bg=BG, fg=YELLOW, font=SANS_B).pack(pady=4)
 
-        # ── Right panel (two plots) ──
+        # ── Right panel (three plots) ──
         right = tk.Frame(self, bg=BG)
         right.grid(row=0, column=1, sticky="nsew", padx=4, pady=4)
         right.rowconfigure(0, weight=3)
@@ -528,6 +555,25 @@ class HistogramTab(tk.Frame):
         self._pcanvas.get_tk_widget().grid(row=1, column=0, sticky="nsew")
         self._pcanvas.draw()
 
+        # Bias monitor figure
+        self._bfig, self._bax = plt.subplots(figsize=(8, 2))
+        self._bfig.patch.set_facecolor(BG)
+        self._bfig.subplots_adjust(left=0.08, right=0.97, top=0.82, bottom=0.22)
+        self._bax.set_facecolor(PANEL)
+        self._bax.set_xlabel("Time (s)", color=FG)
+        self._bax.set_ylabel("V", color=FG)
+        self._bax.set_title("Bias Monitor Statistics", color=ACCENT)
+        self._bax.grid(True)
+        self._bcanvas = FigureCanvasTkAgg(self._pfig, master=right)
+        self._bcanvas.get_tk_widget().grid(row=2, column=0, sticky="nsew")
+        self._bcanvas.draw()
+
+        self._toggle_bias_monitor()
+    
+    def _toggle_bias_monitor(self):
+        state = "normal" if self.bias_monitor_on.get() else "disabled"
+        self._bcanvas.config(state=state)
+        
     # ── File browse ────────────────────────────────────────────────────────
 
     def _browse_file(self):
@@ -547,31 +593,45 @@ class HistogramTab(tk.Frame):
         if not path:
             return
         try:
-            imported = []
+            imported_heights = []
+            imported_bias_mean = []
+            imported_bias_min = []
+            imported_bias_max = []
             with open(path, newline="") as f:
                 reader = csv.reader(f)
                 header = next(reader, None)
-                # Expect columns: timestamp, pulse_height_V — find height col by name or default to col 1
+                # Expect columns: timestamp, pulse_height_V, bias_monitor_mean, bias_monitor_min, bias_monitor_max
                 ph_col = 1
-                if header:
-                    for i, h in enumerate(header):
-                        if "height" in h.lower() or "pulse" in h.lower() or "voltage" in h.lower():
-                            ph_col = i
-                            break
+                bmean_col = 2
+                bmin_col = 3
+                bmax_col = 4
                 for row in reader:
                     if len(row) > ph_col:
                         try:
-                            imported.append(float(row[ph_col]))
+                            imported_heights.append(float(row[ph_col]))
+                            if len(row) > bmax_col: # in case run done without bias monitor
+                                try:
+                                    imported_bias_mean.append(float(row[bmean_col]))
+                                    imported_bias_min.append(float(row[bmin_col]))
+                                    imported_bias_max.append(float(row[bmax_col]))
+                                except ValueError:
+                                    pass
                         except ValueError:
                             pass
-            if not imported:
+            if not imported_heights:
                 messagebox.showwarning("Import", "No numeric pulse-height values found in file.")
                 return
-            self._heights.extend(imported)
+            if not imported_bias_mean:
+                # not a deal breaker, but alert the user
+                messagebox.showwarning("Import", "No bias monitor values found in file.")
+            self._heights.extend(imported_heights)
+            self._bias_monitor_mean.extend(imported_bias_mean)
+            self._bias_monitor_min.extend(imported_bias_min)
+            self._bias_monitor_max.extend(imported_bias_max)
             n = len(self._heights)
             self._count_var.set(f"Events: {n}")
             self._status.set(
-                f"Imported {len(imported)} events from {path.split('/')[-1]}  (total: {n})")
+                f"Imported {len(imported_heights)} events from {path.split('/')[-1]}  (total: {n})")
             self._redraw()
         except Exception as exc:
             messagebox.showerror("Import Error", str(exc))
@@ -586,6 +646,8 @@ class HistogramTab(tk.Frame):
         except Exception as exc:
             messagebox.showerror("Device Error", str(exc))
             return
+        
+        self._bm_on = self.bias_monitor_on.get()
 
         # Open CSV if a path is given
         path = self.filename.get().strip()
@@ -594,8 +656,12 @@ class HistogramTab(tk.Frame):
                 self._csv_file   = open(path, "a", newline="")
                 self._csv_writer = csv.writer(self._csv_file)
                 # Write header only if the file is empty / new
+                if self._bm_on:
+                    header = ["timestamp", "pulse_height_V, bias_monitor_mean_V, bias_monitor_min_V, bias_monitor_max_V"] 
+                else:
+                    header = ["timestamp", "pulse_height_V"]
                 if self._csv_file.tell() == 0:
-                    self._csv_writer.writerow(["timestamp", "pulse_height_V"])
+                    self._csv_writer.writerow(header)
             except Exception as exc:
                 messagebox.showerror("File Error", str(exc))
                 self._ads.close()
@@ -608,6 +674,7 @@ class HistogramTab(tk.Frame):
         self._params = self.scope_settings.get_params()
         self._q      = queue.Queue(maxsize=200)
         self._worker = AcqWorker(self._ads, self._params, self._q)
+        self._start_time = datetime.datetime.now()
         self._worker.start()
         self._running = True
         self._start_btn.configure(state="disabled")
@@ -615,6 +682,8 @@ class HistogramTab(tk.Frame):
         self._status.set("Histogram running …")
         self._poll()
         self._schedule_pulse_redraw()
+        if self._bm_on:
+            self._schedule_bias_monitor_redraw()
 
     def _stop(self):
         self._running = False
@@ -636,6 +705,9 @@ class HistogramTab(tk.Frame):
 
     def _clear_hist(self):
         self._heights.clear()
+        self._bias_monitor_mean.clear()
+        self._bias_monitor_min.clear()
+        self._bias_monitor_max.clear()
         self._count_var.set("Events: 0")
         self._redraw()
 
@@ -655,19 +727,37 @@ class HistogramTab(tk.Frame):
                 self._stop()
                 return
             # Find peak
-            peak = float(np.max(np.abs(item)))
-            self._heights.append(peak)
-            self._last_waveform = item          # store for waveform viewer
+            ts = datetime.datetime.now()
+            time_save = ts.isoformat(timespec="milliseconds")
+            time_plot = round((ts - self._start_time).microseconds / 1e6, 3) # seconds, but higher precision
+            self._times.append(time_plot)
+            ch = self._params["channel"]
+            trace = item[ch]
+            if self._bm_on:
+                bm_ch = [0, 1].remove(ch)[0] # goal is if students flip which channel is what, no problems
+                bias_monitor = item[bm_ch]
+                bm_max = float(np.max(bias_monitor))
+                bm_min = float(np.min(bias_monitor))
+                bm_mean = float(np.mean(bias_monitor))
+                self._bias_monitor_mean.append(bm_mean)
+                self._bias_monitor_min.append(bm_min)
+                self._bias_monitor_max.append(bm_max)
+            peak = float(np.max(trace)) #subtract noise floor...?
+            self._heights.append(trace)
+            self._last_waveform = trace # store for waveform viewer
             if self._csv_writer:
-                ts = datetime.datetime.now().isoformat(timespec="milliseconds")
-                self._csv_writer.writerow([ts, f"{peak:.6f}"])
+                if self._bm_on:
+                    row = [time_save, f"{peak:.6f}", f"{bm_mean:.6f}", f"{bm_min:.6f}", f"{bm_max:.6f}"]
+                else:
+                    row = [time_save, f"{peak:.6f}"]
+                self._csv_writer.writerow(row)
                 self._csv_file.flush()
             updated = True
 
         if updated:
             n = len(self._heights)
             self._count_var.set(f"Events: {n}")
-            self._status.set(f"Histogram running … {n} events")
+            self._status.set(f"Histogram running ... {n} events")
             self._redraw()
 
         self.after(80, self._poll)
@@ -677,6 +767,31 @@ class HistogramTab(tk.Frame):
         self._redraw_pulse()
         if self._running:
             self.after(500, self._schedule_pulse_redraw)
+    
+    def _schedule_bias_monitor_redraw(self):
+        """Throttled bias monitor refresh - every 500 ms while running."""
+        self._redraw_bias_monitor()
+        if self._running and self._bm_on:
+            self.after(500, self._schedule_bias_monitor_redraw)
+        
+    def _redraw_bias_monitor(self):
+        p = self.scope_settings.get_params()
+        y_range = p["y_range"]
+        DIVS = 5
+        self._bax.cla()
+        self._bax.set_facecolor(PANEL)
+        self._bax.set_xlabel("Time (s)", color=FG)
+        self._bax.set_ylabel("V", color=FG)
+        self._bax.set_ylim(-y_range * DIVS, y_range * DIVS)
+        self._bax.set_title("Bias Monitor Statistics", color=ACCENT)
+        self._bax.grid(True)
+        if self._bias_monitor_max and self._bias_monitor_mean and self._bias_monitor_min:
+            t  = self._times
+            self._bax.plot(t, self._bias_monitor_min, color=GREEN, lw=1.2, label="Min")
+            self._bax.plot(t, self._bias_monitor_mean, color=PURPLE, lw=1.2, label="Mean")
+            self._bax.plot(t, self._bias_monitor_max, color=RED, lw=1.2, label="Max")
+            self._bax.legend(loc='upper right')
+        self._bcanvas.draw_idle() 
 
     def _redraw_pulse(self):
         p = self.scope_settings.get_params()
@@ -691,7 +806,7 @@ class HistogramTab(tk.Frame):
         self._pax.set_ylim(-y_range * DIVS, y_range * DIVS)
         self._pax.set_title("Most Recent Pulse", color=ACCENT)
         self._pax.grid(True)
-        if self._last_waveform is not None and hasattr(self, "_params"):
+        if self._last_waveform:
             fs = self._params["sample_rate"]
             t  = np.linspace(-len(self._last_waveform) / (2 * fs) * 1e6, 
                             len(self._last_waveform) / (2 * fs) * 1e6,
@@ -774,10 +889,10 @@ class PulseHeightAnalyzer(tk.Tk):
         nb.pack(fill="both", expand=True, padx=4, pady=4)
 
         self._scope_tab = ScopeTab(nb, self._status)
-        nb.add(self._scope_tab, text="  🔭  Scope View  ")
+        nb.add(self._scope_tab, text="  Scope View  ")
 
         self._hist_tab = HistogramTab(nb, self._status)
-        nb.add(self._hist_tab, text="  📊  Pulse Height Histogram  ")
+        nb.add(self._hist_tab, text="  Pulse Height Histogram  ")
 
         self.protocol("WM_DELETE_WINDOW", self._on_close)
 

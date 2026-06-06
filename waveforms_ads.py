@@ -541,7 +541,7 @@ class WaveFormsADS:
 
     def analog_in_capture(
         self,
-        channel: int = 0,
+        channels: list[int] = [0],
         sample_rate_hz: float = 1e6,
         buffer_size: int = 4096,
         trigger_level_v: Optional[float] = None,
@@ -555,8 +555,8 @@ class WaveFormsADS:
 
         Parameters
         ----------
-        channel : int
-            Zero-based channel index to acquire.
+        channels : list of ints
+            Zero-based channel indexes to acquire.
         sample_rate_hz : float
             ADC sample rate in Hz.
         buffer_size : int
@@ -582,10 +582,17 @@ class WaveFormsADS:
         self.analog_in_set_sample_rate(sample_rate_hz)
         self.analog_in_set_buffer_size(buffer_size)
         self.analog_in_set_acquisition_mode(acqmodeSingle)
-        self.analog_in_channel_enable(channel)
+        for channel in channels:
+            self.analog_in_channel_enable(channel)
 
         if trigger_level_v is not None:
-            trig_ch = channel if trigger_channel is None else trigger_channel
+            if trigger_channel is None:
+                if len(channels) == 1:
+                    trig_ch = channels[0]
+                else:
+                    ... # raise error
+            else:
+                trig_ch = trigger_channel
             self.analog_in_set_trigger_source(trigsrcDetectorAnalogIn)
             self.analog_in_set_trigger_channel(trig_ch)
             self.analog_in_set_trigger_type(trigtypeEdge)
@@ -609,11 +616,15 @@ class WaveFormsADS:
                 )
             time.sleep(0.001)
 
-        return self.analog_in_get_data(channel, buffer_size)
+        channel_outputs = {}
+        for channel in channels:
+            channel_outputs[channel] = self.analog_in_get_data(channel, buffer_size)
+        return channel_outputs
 
     def analog_in_record(
         self,
-        channel: int = 0,
+        trigger_channel: int = 0,
+        channels: list = [0],
         sample_rate_hz: float = 1e6,
         record_length_s: float = 1.0,
         timeout_s: Optional[float] = None,
@@ -634,7 +645,7 @@ class WaveFormsADS:
 
         Returns
         -------
-        np.ndarray  – float64 voltage samples (may be shorter than requested
+        np.ndarray  - float64 voltage samples (may be shorter than requested
                       if data loss occurred; a warning is printed).
         """
         if timeout_s is None:
