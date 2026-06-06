@@ -576,9 +576,9 @@ class HistogramTab(tk.Frame):
     
     def _toggle_bias_monitor(self):
         if self.bias_monitor_on.get():
-            self._bottom_right.grid_remove()
-        else:
             self._bottom_right.grid()
+        else:
+            self._bottom_right.grid_remove()
         
     # ── File browse ────────────────────────────────────────────────────────
 
@@ -791,7 +791,7 @@ class HistogramTab(tk.Frame):
         self._bax.set_ylim(-y_range * DIVS, y_range * DIVS)
         self._bax.set_title("Bias Monitor Statistics", color=ACCENT)
         self._bax.grid(True)
-        if self._bias_monitor_max and self._bias_monitor_mean and self._bias_monitor_min:
+        if self._bias_monitor_max is not None:
             t  = self._times
             self._bax.plot(t, self._bias_monitor_min, color=GREEN, lw=1.2, label="Min")
             self._bax.plot(t, self._bias_monitor_mean, color=PURPLE, lw=1.2, label="Mean")
@@ -812,7 +812,7 @@ class HistogramTab(tk.Frame):
         self._pax.set_ylim(-y_range * DIVS, y_range * DIVS)
         self._pax.set_title("Most Recent Pulse", color=ACCENT)
         self._pax.grid(True)
-        if self._last_waveform:
+        if self._last_waveform is not None:
             fs = self._params["sample_rate"]
             t  = np.linspace(-len(self._last_waveform) / (2 * fs) * 1e6, 
                             len(self._last_waveform) / (2 * fs) * 1e6,
