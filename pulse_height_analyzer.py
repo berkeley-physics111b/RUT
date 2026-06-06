@@ -740,7 +740,9 @@ class HistogramTab(tk.Frame):
             ch = self._params["channel"]
             trace = item[ch]
             if self._bm_on:
-                bm_ch = [0, 1].remove(ch)[0] # goal is if students flip which channel is what, no problems
+                ch_options = [0, 1]
+                ch_options.remove(ch)
+                bm_ch = ch_options[0] # goal is if students flip which channel is what, no problems
                 bias_monitor = item[bm_ch]
                 bm_max = float(np.max(bias_monitor))
                 bm_min = float(np.min(bias_monitor))
@@ -792,7 +794,7 @@ class HistogramTab(tk.Frame):
         self._bax.set_title("Bias Monitor Statistics", color=ACCENT)
         self._bax.grid(True)
         if self._bias_monitor_max is not None:
-            t  = self._times
+            t  = self._times[1:] # no corresponding data point for original start time
             self._bax.plot(t, self._bias_monitor_min, color=GREEN, lw=1.2, label="Min")
             self._bax.plot(t, self._bias_monitor_mean, color=PURPLE, lw=1.2, label="Mean")
             self._bax.plot(t, self._bias_monitor_max, color=RED, lw=1.2, label="Max")
