@@ -663,7 +663,7 @@ class HistogramTab(tk.Frame):
                 self._csv_writer = csv.writer(self._csv_file)
                 # Write header only if the file is empty / new
                 if self._bm_on:
-                    header = ["timestamp", "pulse_height_V, bias_monitor_mean_V, bias_monitor_min_V, bias_monitor_max_V"] 
+                    header = ["timestamp", "pulse_height_V", "bias_monitor_mean_V", "bias_monitor_min_V", "bias_monitor_max_V"] 
                 else:
                     header = ["timestamp", "pulse_height_V"]
                 if self._csv_file.tell() == 0:
@@ -714,6 +714,7 @@ class HistogramTab(tk.Frame):
         self._bias_monitor_mean.clear()
         self._bias_monitor_min.clear()
         self._bias_monitor_max.clear()
+        self._times.clear()
         self._count_var.set("Events: 0")
         self._redraw()
 
@@ -736,10 +737,10 @@ class HistogramTab(tk.Frame):
             ts = datetime.datetime.now()
             time_save = ts.isoformat(timespec="milliseconds")
             time_plot = round((ts - self._start_time).microseconds / 1e6, 3) # seconds, but higher precision
-            self._times.append(time_plot)
             ch = self._params["channel"]
             trace = item[ch]
             if self._bm_on:
+                self._times.append(time_plot)
                 ch_options = [0, 1]
                 ch_options.remove(ch)
                 bm_ch = ch_options[0] # goal is if students flip which channel is what, no problems
@@ -751,7 +752,7 @@ class HistogramTab(tk.Frame):
                 self._bias_monitor_min.append(bm_min)
                 self._bias_monitor_max.append(bm_max)
             peak = float(np.max(trace)) #subtract noise floor...?
-            self._heights.append(trace)
+            self._heights.append(peak)
             self._last_waveform = trace # store for waveform viewer
             if self._csv_writer:
                 if self._bm_on:
