@@ -528,6 +528,7 @@ class HistogramTab(tk.Frame):
         right.grid(row=0, column=1, sticky="nsew", padx=4, pady=4)
         right.rowconfigure(0, weight=3)
         right.rowconfigure(1, weight=1)
+        right.rowconfigure(2, weight=1)
         right.columnconfigure(0, weight=1)
 
         # Histogram figure
@@ -555,6 +556,9 @@ class HistogramTab(tk.Frame):
         self._pcanvas.get_tk_widget().grid(row=1, column=0, sticky="nsew")
         self._pcanvas.draw()
 
+        bottom_right = tk.Frame(right, bg=BG)
+        bottom_right.grid(column=0, row=2)
+
         # Bias monitor figure
         self._bfig, self._bax = plt.subplots(figsize=(8, 2))
         self._bfig.patch.set_facecolor(BG)
@@ -564,15 +568,17 @@ class HistogramTab(tk.Frame):
         self._bax.set_ylabel("V", color=FG)
         self._bax.set_title("Bias Monitor Statistics", color=ACCENT)
         self._bax.grid(True)
-        self._bcanvas = FigureCanvasTkAgg(self._pfig, master=right)
-        self._bcanvas.get_tk_widget().grid(row=2, column=0, sticky="nsew")
+        self._bcanvas = FigureCanvasTkAgg(self._bfig, master=bottom_right)
+        self._bcanvas.get_tk_widget().grid(row=0, column=0, sticky="nsew")
         self._bcanvas.draw()
 
-        self._toggle_bias_monitor()
+        self._toggle_bias_monitor(bottom_right)
     
-    def _toggle_bias_monitor(self):
-        state = "normal" if self.bias_monitor_on.get() else "disabled"
-        self._bcanvas.itemconfig(state=state)
+    def _toggle_bias_monitor(self, bframe):
+        if self.bias_monitor_on.get():
+            bframe.grid_remove()
+        else:
+            bframe.grid()
         
     # ── File browse ────────────────────────────────────────────────────────
 
