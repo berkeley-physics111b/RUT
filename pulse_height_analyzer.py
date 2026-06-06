@@ -795,7 +795,7 @@ class HistogramTab(tk.Frame):
         self._bax.set_title("Bias Monitor Statistics", color=ACCENT)
         self._bax.grid(True)
         if self._bias_monitor_max is not None:
-            t  = self._times[1:] # no corresponding data point for original start time
+            t  = self._times
             self._bax.plot(t, self._bias_monitor_min, color=GREEN, lw=1.2, label="Min")
             self._bax.plot(t, self._bias_monitor_mean, color=PURPLE, lw=1.2, label="Mean")
             self._bax.plot(t, self._bias_monitor_max, color=RED, lw=1.2, label="Max")
