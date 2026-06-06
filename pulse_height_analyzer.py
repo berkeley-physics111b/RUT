@@ -556,8 +556,8 @@ class HistogramTab(tk.Frame):
         self._pcanvas.get_tk_widget().grid(row=1, column=0, sticky="nsew")
         self._pcanvas.draw()
 
-        bottom_right = tk.Frame(right, bg=BG)
-        bottom_right.grid(column=0, row=2)
+        self._bottom_right = tk.Frame(right, bg=BG)
+        self._bottom_right.grid(column=0, row=2)
 
         # Bias monitor figure
         self._bfig, self._bax = plt.subplots(figsize=(8, 2))
@@ -568,17 +568,17 @@ class HistogramTab(tk.Frame):
         self._bax.set_ylabel("V", color=FG)
         self._bax.set_title("Bias Monitor Statistics", color=ACCENT)
         self._bax.grid(True)
-        self._bcanvas = FigureCanvasTkAgg(self._bfig, master=bottom_right)
+        self._bcanvas = FigureCanvasTkAgg(self._bfig, master=self._bottom_right)
         self._bcanvas.get_tk_widget().grid(row=0, column=0, sticky="nsew")
         self._bcanvas.draw()
 
-        self._toggle_bias_monitor(bottom_right)
+        self._toggle_bias_monitor()
     
-    def _toggle_bias_monitor(self, bframe):
+    def _toggle_bias_monitor(self):
         if self.bias_monitor_on.get():
-            bframe.grid_remove()
+            self._bottom_right.grid_remove()
         else:
-            bframe.grid()
+            self._bottom_right.grid()
         
     # ── File browse ────────────────────────────────────────────────────────
 
