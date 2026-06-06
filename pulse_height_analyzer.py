@@ -738,7 +738,7 @@ class HistogramTab(tk.Frame):
             # Find peak
             ts = datetime.datetime.now()
             time_save = ts.isoformat(timespec="milliseconds")
-            time_plot = round((ts - self._start_time).total_seconds() / 1e6, 3) # seconds, but higher precision
+            time_plot = (ts - self._start_time).total_seconds()
             ch = self._params["channel"]
             trace = item[ch]
             if self._bm_on:
