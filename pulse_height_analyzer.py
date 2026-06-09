@@ -134,7 +134,7 @@ class ScopeSettingsPanel(tk.LabelFrame):
         self.trig_level   = tk.DoubleVar(value=0.15)
         self.edge         = tk.StringVar(value="Rise")
         self.sample_freq  = tk.DoubleVar(value=1e8)
-        self.y_range      = tk.DoubleVar(value=1.0)
+        self.y_range      = tk.DoubleVar(value=5.0)
         self.y_offset     = tk.DoubleVar(value=0.0)
         self.time_base_us = tk.DoubleVar(value=10.0)
         self.probe_invert = tk.BooleanVar(value=False)
@@ -387,13 +387,12 @@ class ScopeTab(tk.Frame):
         p = self._params
         y_range = p["y_range"]
         time_base = p["time_base_us"]
-        DIVS = 5
         self._ax.cla()
         self._ax.set_facecolor(PANEL)
         self._ax.set_xlabel("Time (μs)", color=FG)
         self._ax.set_ylabel("Voltage (V)", color=FG)
-        self._ax.set_xlim(-time_base*DIVS, time_base*DIVS)
-        self._ax.set_ylim(-y_range*DIVS, y_range*DIVS)
+        self._ax.set_xlim(-time_base/2, time_base/2)
+        self._ax.set_ylim(-y_range/2, y_range/2)
         self._ax.set_title("Scope - Recent Pulses", color=ACCENT)
         self._ax.grid(True)
 
@@ -788,12 +787,11 @@ class HistogramTab(tk.Frame):
     def _redraw_bias_monitor(self):
         p = self.scope_settings.get_params()
         y_range = p["y_range"]
-        DIVS = 5
         self._bax.cla()
         self._bax.set_facecolor(PANEL)
         self._bax.set_xlabel("Time (s)", color=FG)
         self._bax.set_ylabel("V", color=FG)
-        self._bax.set_ylim(-y_range * DIVS, y_range * DIVS)
+        self._bax.set_ylim(-y_range / 2, y_range / 2)
         self._bax.set_title("Bias Monitor Statistics", color=ACCENT)
         self._bax.grid(True)
         if self._bias_monitor_max is not None:
@@ -808,13 +806,12 @@ class HistogramTab(tk.Frame):
         p = self.scope_settings.get_params()
         y_range = p["y_range"]
         time_base = p["time_base_us"]
-        DIVS = 5
         self._pax.cla()
         self._pax.set_facecolor(PANEL)
         self._pax.set_xlabel("Time (μs)", color=FG)
         self._pax.set_ylabel("V", color=FG)
-        self._pax.set_xlim(-time_base * DIVS, time_base * DIVS)
-        self._pax.set_ylim(-y_range * DIVS, y_range * DIVS)
+        self._pax.set_xlim(-time_base / 2, time_base / 2)
+        self._pax.set_ylim(-y_range / 2, y_range / 2)
         self._pax.set_title("Most Recent Pulse", color=ACCENT)
         self._pax.grid(True)
         if self._last_waveform is not None:
